@@ -1,0 +1,239 @@
+# 🛡️ XPing
+
+<p align="center">
+  <img src="assets/xping_banner.png" alt="XPing Banner" width="800">
+</p>
+
+**All-in-One Linux Security, Hardening & Systems Analysis Toolkit**
+
+XPing is a production-grade, modular security auditing and reconnaissance tool for Linux systems. Designed with **zero external dependencies** (using the Python 3.8+ standard library only), it runs seamlessly on bare-metal servers, containers, VM instances, or air-gapped secure environments.
+
+XPing performs read-only, non-destructive checks across 6 analysis domains. It features a **custom interactive CLI menu**, multi-threaded parallel execution, and structured reporting (Terminal, JSON, and self-contained HTML).
+
+---
+
+## 🚀 Features & Modules
+
+| Module | Scope of Analysis | Key Detections & System Assets Audited |
+| :--- | :--- | :--- |
+| **`sysrecon`** | System & OS Recon | OS/kernel version analysis, system uptime, and CPU architecture. Enumerates all users in `/etc/passwd` to identify duplicate UID 0 accounts, system/service accounts with interactive login shells, and blank password fields in `/etc/shadow`. Audits active processes for known malicious keywords, catalogs system/user cron jobs, lists active kernel modules, reads `/proc/mounts`, and scans process environment variables for leaked credentials. |
+| **`netaudit`** | Network Attack Surface | Identifies listening TCP and UDP sockets (mapping active processes to port numbers using `ss` or `netstat`). Audits rules in `iptables` or `nftables` for default `ACCEPT` policies on input/forward chains. Analyzes `/etc/resolv.conf` for external DNS configurations, checks interfaces for promiscuous mode sniffers, reads `ipNeigh` for ARP table duplicates (ARP spoofing), and checks `/proc/sys/net/ipv4/ip_forward` status. |
+| **`secaudit`** | Security Permissions | Performs recursive scans of `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, and `/opt` to locate SUID/SGID binaries, mapping findings against **100+ GTFOBins exploitable executables**. Inspects file permissions on critical system assets (`/etc/shadow`, `/etc/passwd`, `/etc/gshadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`). Checks password complexity and expiration values in `/etc/login.defs`, and checks capabilities set via `getcap`. |
+| **`loganalyzer`** | Forensic Log Auditing | Processes `/var/log/auth.log` or `/var/log/secure` to capture failed SSH logins, brute-force frequency (threshold-based IP tracking), successful logins, and switched sessions (`su`/`sudo`). Scans syslog and kernel logs for OOM (Out of Memory) kills, kernel panics, and process segmentation faults. Audits system log files for truncation or zero-byte resets (log tampering indicator). |
+| **`hardening`** | Hardening Checkups | Checks 13 kernel parameter files in `/proc/sys` (including ASLR state, `ptrace_scope`, TCP SYN cookies, ICMP redirects, source routing, and packet logging). Evaluates Mandatory Access Control state (SELinux `getenforce` modes or AppArmor loaded profiles). Checks `/etc/modprobe.d` configurations for USB storage blacklisting, audits `/tmp` and `/var/tmp` for `noexec`/`nosuid`/`nodev` mount flags, and checks automatic update services. |
+| **`redteam`** | Attack Path Validation | Analyzes active environment `PATH` configurations for writable directories or current-directory (`.`) inclusions. Evaluates user sudo configurations (`sudo -l`) for **35+ known privilege escalation vectors** (such as passwordless `tar`, `vim`, `find`, `docker`, or compiler tools). Detects unencrypted private SSH keys, AWS access keys, and plain-text passwords in configuration files. Scans shell history files for plain-text password usage. |
+
+---
+
+## 🛠️ Requirements & System Resilience
+
+- **Runtime**: Python 3.8+ (Standard Library only. No `pip install` required).
+- **Target OS**: Linux (Kali, Ubuntu, Debian, RHEL, CentOS, Rocky Linux, Alpine, Arch).
+- **Permissions**: Runs as an unprivileged user (with graceful degradation for operations requiring root) or as `root` (highly recommended for complete coverage).
+- **Cross-Platform Resilience**:
+  - **Graceful Degradation**: If executed on Windows or macOS, XPing runs its platform-independent components, allowing lists, configuration validation, and reporting without crashing.
+  - **Console Robustness**: The terminal output automatically detects and intercepts encoding issues (like Windows `CP1252` encoding). It replaces box-drawing symbols with ASCII fallbacks on the fly to prevent `UnicodeEncodeError` crashes.
+
+---
+
+## ⚡ Quick Start
+
+### 1. Clone & Run Directly
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/xping.git
+cd xping
+
+# Option A: Run a full security scan outputting to the Terminal
+sudo python3 run.py scan --all
+
+# Option B: Run specific modules only
+sudo python3 run.py scan --modules sysrecon,netaudit
+
+# Option C: Launch the Interactive Menu Console
+python3 run.py
+#   [1] Full Security Scan      — Runs all 6 modules sequentially.
+#   [2] Selective Scan          — Displays module list; type numbers (e.g. 1,4) to run.
+#   [3] Quick Scan (High+)      — Runs full scan filtering out LOW/INFO findings.
+#   [4] List Modules            — Lists loaded modules with description text.
+#   [5] Generate HTML Report    — Runs full scan, prompts for output file path.
+#   [6] Generate JSON Report    — Runs full scan, exports data structure to file.
+```
+
+### 2. Standalone Installation
+
+You can install XPing globally using `setuptools`:
+
+```bash
+sudo pip install -e .
+
+# Run globally from anywhere on the system
+sudo xping scan --all
+```
+
+---
+
+## 💻 CLI Reference
+
+XPing includes a custom-built argument parser (independent of the Python `argparse` module).
+
+```text
+xping scan [options]
+  --all,     -a            Run all available modules
+  --modules, -m LIST       Comma-separated list of modules (e.g. sysrecon,netaudit)
+  --format, -f FORMAT      Output format: terminal | json | html (default: terminal)
+  --output,  -o PATH       Output file destination (required for json/html)
+  --severity,-s LEVEL      Minimum finding severity: info | low | medium | high | critical
+  --workers, -w N          Maximum parallel execution threads (default: 4)
+  --log-file PATH          Write runtime diagnostics to a JSON log file
+  --verbose, -v            Show trace debug logs
+  --no-color               Disable all ANSI escape sequences for logging/output
+
+xping list                 List available modules and their descriptions
+xping --version, -V        Display the current version
+xping --help, -h           Show the help menu
+```
+
+---
+
+## 📋 Reporting Formats
+
+### 1. Interactive Terminal
+Features high-contrast severity badges (`⬤ CRITICAL`, `● HIGH`, `◉ MEDIUM`, `○ LOW`), file path deep-links, clear evidence outputs, and step-by-step remediation advice.
+
+### 2. Structured JSON
+Output structured results containing full metrics, target hostname, execution timing, findings list, and associated metadata. Perfect for SIEM integration or automation pipelines.
+
+### 3. Responsive HTML
+Generates a self-contained, responsive, dark-themed HTML dashboard containing visual stat cards, collapsible module sections, and structured code blocks. Requires no external CSS/JS file requests or assets.
+
+---
+
+## 📂 Architecture
+
+```text
+xping/
+├── __init__.py            # Package versioning and attributes
+├── cli.py                 # Interactive menus, console spinners, and custom arg parser
+├── core/
+│   ├── engine.py          # Parallel threat pool execution engine
+│   ├── models.py          # Finding, Severity, ScanResult dataclasses
+│   ├── reporter.py        # Terminal formatting and HTML/JSON report builders
+│   └── logger.py          # Structured logging (standard error & JSON logging)
+├── modules/
+│   ├── base.py            # Abstract Base Module class
+│   ├── sysrecon.py        # OS, cron, env, processes check
+│   ├── netaudit.py        # Interface, DNS, ARP, listening ports check
+│   ├── secaudit.py        # PAM, SSH configuration, SUID, capability audit
+│   ├── loganalyzer.py     # Forensics audit, auth.log, crash trace check
+│   ├── hardening.py       # kernel sysctl, MAC policies, services verification
+│   └── redteam.py         # Privesc, Docker container, keys detection
+└── utils/
+    └── helpers.py         # Safe command runner, fallback encoding parser
+```
+
+---
+
+## 🤖 CI/CD Integration
+
+XPing is designed to fit directly into DevSecOps workflows. Because it returns distinct exit codes depending on scan findings, you can block builds or raise security alerts in CI/CD when critical vulnerabilities are introduced.
+
+### GitHub Actions Workflow Example
+
+Create a workflow file in `.github/workflows/xping-audit.yml`:
+
+```yaml
+name: "Security & Hardening Audit"
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Execute XPing System Scan
+        run: |
+          # Install command globally
+          sudo pip install .
+          
+          # Run full scan, exiting with non-zero on CRITICAL findings
+          sudo xping scan --all --severity high --format html --output report.html
+
+      - name: Upload Security Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xping-security-report
+          path: report.html
+```
+
+---
+
+## 🔌 Adding Custom Modules
+
+Adding checks to XPing requires zero system registration. Create a Python file inside `xping/modules/` inheriting from the base class:
+
+```python
+from xping.modules.base import BaseModule
+from xping.core.models import ModuleResult, Finding, Severity
+
+class CustomAuditModule(BaseModule):
+    @property
+    def name(self) -> str:
+        return "customaudit"
+
+    @property
+    def description(self) -> str:
+        return "Verify target configuration"
+
+    def run(self) -> ModuleResult:
+        findings = []
+        
+        # Add custom detection logic
+        findings.append(self._make_finding(
+            title="Custom Compliance Failure",
+            description="Configuration deviates from organizational baseline.",
+            severity=Severity.MEDIUM,
+            evidence="Configuration key = insecure_val",
+            remediation="Change key to secure_val in configuration file."
+        ))
+        
+        return ModuleResult(
+            module_name=self.name,
+            description=self.description,
+            findings=findings
+        )
+```
+
+XPing's scan engine will automatically register, execute, and document findings from the new module on the next run.
+
+---
+
+## 🛡️ Security Policy, Safety & Reliability Mechanics
+
+To run safely in sensitive, high-availability production environments, XPing implements a strict security and resource containment policy:
+
+1. **Strictly Non-Destructive**: 
+   All inspections are read-only. XPing never alters files, adjusts iptables rules, starts/stops services, changes permissions, or manipulates system state.
+2. **Robust Error & Crash Isolation**:
+   Each module runs in its own isolated try-except context. If a single module encounters an error, throws an unhandled exception, or experiences a timeout, the orchestrator log captures the diagnostic traceback and continues execution of the remaining modules.
+3. **Execution Timeouts**:
+   Command executions (such as SUID binary lookups via `find` or log queries) utilize a strict 30-second execution timeout window. This prevents zombie processes or hung commands from consuming system CPU or blocking execution threads indefinitely.
+4. **Memory Constraint Safeguards**:
+   Log parsing routines (in `loganalyzer`) are bounded to a maximum of 50,000 lines per file. This prevents Out-of-Memory (OOM) exceptions on large, un-rotated server log targets.
+5. **Zero Dependency Footprint**:
+   Relies entirely on standard libraries included with Python 3.8+. It does not install external package wheels, configure system hooks, or introduce secondary dependency attack vectors to the system.
+
+---
+
+## 📄 License
+
+XPing is distributed under the [MIT License](LICENSE).
