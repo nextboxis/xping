@@ -34,6 +34,12 @@ from xping.core.models import Severity
 # Terminal Rendering Primitives
 # ═══════════════════════════════════════════════════════════════════════
 
+def _supports_unicode() -> bool:
+    """Check if the terminal can render Unicode box-drawing characters."""
+    encoding = getattr(sys.stdout, "encoding", "") or ""
+    return encoding.lower().replace("-", "") in ("utf8", "utf16", "utf32", "utf8sig")
+
+
 class Term:
     """Low-level terminal output with ANSI support detection."""
 
@@ -58,15 +64,25 @@ class Term:
     BG_CYAN = "\033[46m"
     BG_GRAY = "\033[100m"
 
-    # Box-drawing characters
-    TL = "+"  # top-left
-    TR = "+"  # top-right
-    BL = "+"  # bottom-left
-    BR = "+"  # bottom-right
-    H  = "-"  # horizontal
-    V  = "|"  # vertical
-    LT = "+"  # left-T
-    RT = "+"  # right-T
+    # Box-drawing characters — Unicode if supported, ASCII fallback
+    if _supports_unicode():
+        TL = "╭"  # top-left
+        TR = "╮"  # top-right
+        BL = "╰"  # bottom-left
+        BR = "╯"  # bottom-right
+        H  = "─"  # horizontal
+        V  = "│"  # vertical
+        LT = "├"  # left-T
+        RT = "┤"  # right-T
+    else:
+        TL = "+"
+        TR = "+"
+        BL = "+"
+        BR = "+"
+        H  = "-"
+        V  = "|"
+        LT = "+"
+        RT = "+"
 
     @classmethod
     def disable_color(cls) -> None:
@@ -636,6 +652,10 @@ def main() -> int:
     """
     argv = sys.argv[1:]
     args = parse_args(argv)
+
+    # Install unicode-safe print wrapper for terminal output
+    from xping.utils.helpers import install_safe_print
+    install_safe_print()
 
     # Handle --version before anything else
     if args.version:

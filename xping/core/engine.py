@@ -1,4 +1,4 @@
-﻿"""
+"""
 xping.core.engine
 ~~~~~~~~~~~~~~~~~~~~~
 Central orchestrator that discovers, loads, and executes analysis modules
@@ -39,9 +39,6 @@ class ScanEngine:
         result = engine.run_scan()
     """
 
-    # Map of module_name -> module_class, populated by discover_modules()
-    _registry: Dict[str, Type[BaseModule]] = {}
-
     def __init__(
         self,
         modules: Optional[List[str]] = None,
@@ -57,6 +54,8 @@ class ScanEngine:
         self.requested_modules = modules
         self.max_workers = max_workers
         self.severity_threshold = severity_threshold
+        # Map of module_name -> module_class, populated by _discover_modules()
+        self._registry: Dict[str, Type[BaseModule]] = {}
         self._discover_modules()
 
     def _discover_modules(self) -> None:

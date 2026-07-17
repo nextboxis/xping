@@ -1,4 +1,4 @@
-﻿"""
+"""
 xping.core.models
 ~~~~~~~~~~~~~~~~~~~~~
 Data models for findings, severity levels, and module results.
@@ -8,7 +8,6 @@ Enum-based severity ensures consistent ordering and comparison.
 """
 
 import enum
-import time
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 

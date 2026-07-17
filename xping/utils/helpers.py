@@ -26,19 +26,29 @@ except ImportError:
     HAS_PWD_GRP = False
 import builtins
 
+_original_print = builtins.print
+
+
 def safe_print(*args, sep=" ", end="\n", file=None):
+    """Unicode-safe print wrapper that replaces unencodable characters."""
     if file is None:
         file = sys.stdout
     try:
-        builtins_print(*args, sep=sep, end=end, file=file)
+        _original_print(*args, sep=sep, end=end, file=file)
     except UnicodeEncodeError:
         encoding = getattr(file, "encoding", "utf-8") or "utf-8"
         text = sep.join(str(arg) for arg in args) + end
         file.write(text.encode(encoding, errors="replace").decode(encoding))
         file.flush()
 
-builtins_print = builtins.print
-builtins.print = safe_print
+
+def install_safe_print() -> None:
+    """
+    Replace builtins.print with the unicode-safe wrapper.
+    Call this once at CLI startup — not at import time — to avoid
+    side effects when xping is used as a library.
+    """
+    builtins.print = safe_print
 
 
 

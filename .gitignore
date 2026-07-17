@@ -30,13 +30,19 @@ ENV/
 env.bak/
 venv.bak/
 
-# Reports & Logs
-*.html
-*.json
-*.log
-!xping/
-!run.py
-!setup.py
-!README.md
-!LICENSE
-!assets/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Reports & Logs (root-level outputs only)
+/*.html
+/*.json
+/*.log
+/report.*
+
+# OS
+.DS_Store
+Thumbs.db

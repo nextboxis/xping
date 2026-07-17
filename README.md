@@ -4,11 +4,40 @@
   <img src="assets/xping_banner.png" alt="XPing Banner" width="800">
 </p>
 
-**All-in-One Linux Security, Hardening & Systems Analysis Toolkit**
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green?style=flat-square"></a>
+  <a href="#"><img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-orange?style=flat-square&logo=linux&logoColor=white"></a>
+  <a href="#"><img alt="Dependencies: None" src="https://img.shields.io/badge/dependencies-zero-brightgreen?style=flat-square"></a>
+  <a href="#"><img alt="Version: 1.0.0" src="https://img.shields.io/badge/version-1.0.0-blueviolet?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <strong>All-in-One Linux Security, Hardening & Systems Analysis Toolkit</strong>
+</p>
 
 XPing is a production-grade, modular security auditing and reconnaissance tool for Linux systems. Designed with **zero external dependencies** (using the Python 3.8+ standard library only), it runs seamlessly on bare-metal servers, containers, VM instances, or air-gapped secure environments.
 
 XPing performs read-only, non-destructive checks across 6 analysis domains. It features a **custom interactive CLI menu**, multi-threaded parallel execution, and structured reporting (Terminal, JSON, and self-contained HTML).
+
+---
+
+## 📑 Table of Contents
+
+- [Features & Modules](#-features--modules)
+- [Requirements & System Resilience](#️-requirements--system-resilience)
+- [Quick Start](#-quick-start)
+- [CLI Reference](#-cli-reference)
+- [Exit Codes](#-exit-codes)
+- [Reporting Formats](#-reporting-formats)
+- [Architecture](#-architecture)
+- [CI/CD Integration](#-cicd-integration)
+- [Adding Custom Modules](#-adding-custom-modules)
+- [Security Policy & Safety Mechanics](#️-security-policy-safety--reliability-mechanics)
+- [Comparison with Other Tools](#-comparison-with-other-tools)
+- [Contributing](#-contributing)
+- [Changelog](#-changelog)
+- [License](#-license)
 
 ---
 
@@ -42,7 +71,7 @@ XPing performs read-only, non-destructive checks across 6 analysis domains. It f
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/xping.git
+git clone https://github.com/giridharan-dev/xping.git
 cd xping
 
 # Option A: Run a full security scan outputting to the Terminal
@@ -61,7 +90,13 @@ python3 run.py
 #   [6] Generate JSON Report    — Runs full scan, exports data structure to file.
 ```
 
-### 2. Standalone Installation
+### 2. One-Liner Download & Run
+
+```bash
+git clone https://github.com/giridharan-dev/xping.git && cd xping && sudo python3 run.py scan --all
+```
+
+### 3. Standalone Installation
 
 You can install XPing globally using `setuptools`:
 
@@ -97,6 +132,19 @@ xping --help, -h           Show the help menu
 
 ---
 
+## 🔢 Exit Codes
+
+| Code | Meaning |
+| :--- | :--- |
+| `0` | Scan completed successfully — no critical findings |
+| `1` | Error — invalid arguments, missing modules, or runtime failure |
+| `2` | Scan completed — **CRITICAL** findings detected |
+| `130` | Interrupted — user pressed Ctrl+C |
+
+Use exit codes in CI/CD pipelines to gate deployments based on security posture.
+
+---
+
 ## 📋 Reporting Formats
 
 ### 1. Interactive Terminal
@@ -105,8 +153,16 @@ Features high-contrast severity badges (`⬤ CRITICAL`, `● HIGH`, `◉ MEDIUM`
 ### 2. Structured JSON
 Output structured results containing full metrics, target hostname, execution timing, findings list, and associated metadata. Perfect for SIEM integration or automation pipelines.
 
+```bash
+sudo xping scan --all -f json -o scan_results.json
+```
+
 ### 3. Responsive HTML
 Generates a self-contained, responsive, dark-themed HTML dashboard containing visual stat cards, collapsible module sections, and structured code blocks. Requires no external CSS/JS file requests or assets.
+
+```bash
+sudo xping scan --all -f html -o security_report.html
+```
 
 ---
 
@@ -117,7 +173,7 @@ xping/
 ├── __init__.py            # Package versioning and attributes
 ├── cli.py                 # Interactive menus, console spinners, and custom arg parser
 ├── core/
-│   ├── engine.py          # Parallel threat pool execution engine
+│   ├── engine.py          # Parallel thread pool execution engine
 │   ├── models.py          # Finding, Severity, ScanResult dataclasses
 │   ├── reporter.py        # Terminal formatting and HTML/JSON report builders
 │   └── logger.py          # Structured logging (standard error & JSON logging)
@@ -127,7 +183,7 @@ xping/
 │   ├── netaudit.py        # Interface, DNS, ARP, listening ports check
 │   ├── secaudit.py        # PAM, SSH configuration, SUID, capability audit
 │   ├── loganalyzer.py     # Forensics audit, auth.log, crash trace check
-│   ├── hardening.py       # kernel sysctl, MAC policies, services verification
+│   ├── hardening.py       # Kernel sysctl, MAC policies, services verification
 │   └── redteam.py         # Privesc, Docker container, keys detection
 └── utils/
     └── helpers.py         # Safe command runner, fallback encoding parser
@@ -234,6 +290,50 @@ To run safely in sensitive, high-availability production environments, XPing imp
 
 ---
 
+## ⚖️ Comparison with Other Tools
+
+| Feature | XPing | Lynis | LinPEAS | linux-exploit-suggester |
+| :--- | :---: | :---: | :---: | :---: |
+| Zero dependencies | ✅ | ❌ (shell) | ❌ (shell) | ❌ (shell) |
+| Python-based | ✅ | ❌ | ❌ | ❌ |
+| Multi-threaded execution | ✅ | ❌ | ❌ | ❌ |
+| HTML report output | ✅ | ✅ | ❌ | ❌ |
+| JSON structured output | ✅ | ✅ | ❌ | ❌ |
+| Interactive CLI menu | ✅ | ❌ | ❌ | ❌ |
+| Red team privesc checks | ✅ | ❌ | ✅ | ✅ |
+| GTFOBins SUID matching | ✅ | ❌ | ✅ | ❌ |
+| Kernel exploit suggestions | ✅ | ❌ | ✅ | ✅ |
+| CIS hardening benchmarks | ✅ | ✅ | ❌ | ❌ |
+| Log forensics | ✅ | ❌ | ❌ | ❌ |
+| CI/CD exit codes | ✅ | ✅ | ❌ | ❌ |
+| Pluggable module system | ✅ | ❌ | ❌ | ❌ |
+| Cross-platform fallback | ✅ | ❌ | ❌ | ❌ |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+
+- Development setup and code standards
+- How to add new analysis modules
+- Testing your changes
+- Pull request process
+
+---
+
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
+
+---
+
 ## 📄 License
 
 XPing is distributed under the [MIT License](LICENSE).
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ for the security community</sub>
+</p>
