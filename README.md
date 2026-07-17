@@ -1,4 +1,4 @@
-# 🛡️ XPing
+#  XPing
 
 <p align="center">
   <img src="assets/xping_banner.png" alt="XPing Banner" width="800">
