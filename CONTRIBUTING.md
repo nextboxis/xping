@@ -6,7 +6,7 @@ Thank you for your interest in contributing to XPing! This guide will help you g
 
 Be respectful, professional, and constructive. Security tooling is serious business — collaboration over competition.
 
-## 🛠️ Development Setup
+## 🛠️ Development Setups
 
 ```bash
 # Clone the repository
