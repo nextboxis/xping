@@ -129,6 +129,7 @@ class ScanResult:
     scan_id: str = ""
     timestamp: str = ""
     hostname: str = ""
+    target_ip: str = ""
     kernel: str = ""
     run_as_root: bool = False
     module_results: List[ModuleResult] = field(default_factory=list)
@@ -147,6 +148,7 @@ class ScanResult:
             "scan_id": self.scan_id,
             "timestamp": self.timestamp,
             "hostname": self.hostname,
+            "target_ip": self.target_ip,
             "kernel": self.kernel,
             "run_as_root": self.run_as_root,
             "total_findings": len(all_findings),

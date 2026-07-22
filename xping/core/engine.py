@@ -46,6 +46,7 @@ class ScanEngine:
         max_workers: int = 4,
         severity_threshold: Severity = Severity.INFO,
         custom_modules_dir: Optional[str] = None,
+        target_ip: Optional[str] = None,
     ):
         """
         Args:
@@ -53,11 +54,13 @@ class ScanEngine:
             max_workers:         Thread pool size for parallel execution.
             severity_threshold:  Only include findings at or above this level.
             custom_modules_dir:  Optional path to directory containing custom plugin modules.
+            target_ip:           Optional target IP or host address for the scan.
         """
         self.requested_modules = modules
         self.max_workers = max_workers
         self.severity_threshold = severity_threshold
         self.custom_modules_dir = custom_modules_dir
+        self.target_ip = target_ip
         # Map of module_name -> module_class, populated by _discover_modules()
         self._registry: Dict[str, Type[BaseModule]] = {}
         self._discover_modules()
@@ -191,9 +194,16 @@ class ScanEngine:
         """Gather basic system metadata for the scan header."""
         hostname_out, _, _ = run_cmd("hostname", timeout=5)
         kernel_out, _, _ = run_cmd("uname -r", timeout=5)
+
+        target = self.target_ip
+        if not target:
+            ip_out, _, _ = run_cmd("hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1.1.1.1 2>/dev/null | awk '{print $7}'", timeout=5)
+            target = ip_out.strip() if ip_out else "127.0.0.1"
+
         return {
             "hostname": hostname_out or platform.node(),
             "kernel": kernel_out or platform.release(),
+            "target_ip": target,
         }
 
     def run_scan(self) -> ScanResult:
@@ -218,6 +228,7 @@ class ScanEngine:
                 scan_id=str(uuid.uuid4())[:8],
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 hostname=sys_info.get("hostname", "unknown"),
+                target_ip=sys_info.get("target_ip", "127.0.0.1"),
                 kernel=sys_info.get("kernel", "unknown"),
                 run_as_root=is_root(),
                 total_execution_time=time.monotonic() - scan_start,
@@ -252,6 +263,7 @@ class ScanEngine:
             scan_id=str(uuid.uuid4())[:8],
             timestamp=datetime.now(timezone.utc).isoformat(),
             hostname=sys_info.get("hostname", "unknown"),
+            target_ip=sys_info.get("target_ip", "127.0.0.1"),
             kernel=sys_info.get("kernel", "unknown"),
             run_as_root=is_root(),
             module_results=results,

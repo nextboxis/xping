@@ -45,6 +45,8 @@ class Reporter:
         print(f"  Scan ID:    {r.scan_id}")
         print(f"  Timestamp:  {r.timestamp}")
         print(f"  Hostname:   {r.hostname}")
+        if r.target_ip:
+            print(f"  Target IP:  {r.target_ip}")
         print(f"  Kernel:     {r.kernel}")
         print(f"  Run as:     {'root' if r.run_as_root else 'unprivileged'}")
         print(f"  Duration:   {r.total_execution_time:.2f}s")
@@ -364,6 +366,7 @@ class Reporter:
             <div class="meta">
                 <span>Scan ID: {esc(r.scan_id)}</span>
                 <span>Host: {esc(r.hostname)}</span>
+                <span>Target IP: {esc(r.target_ip or 'N/A')}</span>
                 <span>Kernel: {esc(r.kernel)}</span>
                 <span>Time: {esc(r.timestamp)}</span>
                 <span>Run as: {"root" if r.run_as_root else "unprivileged"}</span>

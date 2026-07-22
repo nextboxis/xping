@@ -167,6 +167,7 @@ class ParsedArgs:
         self.command: Optional[str] = None
         self.all: bool = False
         self.modules: Optional[str] = None
+        self.target: Optional[str] = None
         self.format: str = "terminal"
         self.output: Optional[str] = None
         self.severity: str = "info"
@@ -195,6 +196,8 @@ def parse_args(argv: List[str]) -> ParsedArgs:
     flags = [
         ("--all",                "-a",  "all",                False, bool),
         ("--modules",            "-m",  "modules",            True,  str),
+        ("--target",             "-t",  "target",             True,  str),
+        ("--target-ip",          None,  "target",             True,  str),
         ("--format",             "-f",  "format",             True,  str),
         ("--output",             "-o",  "output",             True,  str),
         ("--severity",           "-s",  "severity",           True,  str),
@@ -312,6 +315,7 @@ def print_help() -> None:
     opts = [
         ("--all,     -a", "Run all available modules"),
         ("--modules, -m", "Comma-separated module list"),
+        ("--target,  -t", "Target host or IP address (default: auto-detected local IP)"),
         ("--format,  -f", "Output format: terminal | json | html | sarif"),
         ("--output,  -o", "Report output file destination"),
         ("--severity,-s", "Min severity: info | low | medium | high | critical"),
@@ -574,6 +578,7 @@ def interactive_module_select() -> int:
 def run_scan(
     all_modules: bool = False,
     modules: Optional[List[str]] = None,
+    target: Optional[str] = None,
     severity: str = "info",
     fmt: str = "terminal",
     output: Optional[str] = None,
@@ -601,6 +606,8 @@ def run_scan(
     # Config summary
     mod_desc = "ALL" if all_modules else ", ".join(modules or [])
     Term.writeln(f"  {Term.c('Modules:', Term.DIM)}  {Term.c(mod_desc, Term.WHITE)}")
+    if target:
+        Term.writeln(f"  {Term.c('Target IP:', Term.DIM)} {Term.c(target, Term.WHITE)}")
     Term.writeln(f"  {Term.c('Severity:', Term.DIM)} {Term.c('>= ' + severity.upper(), Term.YELLOW)}")
     Term.writeln(f"  {Term.c('Format:', Term.DIM)}   {Term.c(fmt, Term.WHITE)}")
     if output:
@@ -620,6 +627,7 @@ def run_scan(
             max_workers=workers,
             severity_threshold=sev_threshold,
             custom_modules_dir=custom_modules_dir,
+            target_ip=target,
         )
 
         progress.update("Running security analysis...")
@@ -856,6 +864,7 @@ def main() -> int:
             return run_scan(
                 all_modules=args.all,
                 modules=module_list,
+                target=args.target,
                 severity=args.severity,
                 fmt=args.format,
                 output=args.output,
