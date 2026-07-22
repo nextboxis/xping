@@ -8,15 +8,21 @@ Features:
   - Custom argument parser (no argparse dependency)
   - Interactive menu mode when run without arguments
   - Live scan progress with spinner animation
-  - Module selection with checkbox-style interface
-  - Styled help system with boxed output
+  - Module selection & Target IP configuration
+  - Security drift analysis (`xping diff`)
+  - SARIF v2.1.0 GitHub Security integration & automated fix script generation
+  - External custom plugin module loading
 
 Usage:
-    python3 run.py                                      # Interactive mode
-    python3 run.py scan --all                           # Full scan
-    python3 run.py scan -m sysrecon,netaudit            # Specific modules
-    python3 run.py scan --all -f html -o report.html    # HTML report
-    python3 run.py list                                 # List modules
+    python3 run.py                                           # Interactive mode
+    python3 run.py scan --all                                # Full scan
+    python3 run.py scan --all -t 192.168.1.50                # Target IP scan
+    python3 run.py scan -m sysrecon,container                # Specific modules
+    python3 run.py scan --all -f html -o report.html         # HTML report
+    python3 run.py scan --all -f sarif -o report.sarif       # SARIF export
+    python3 run.py scan --all --generate-fix fix.sh          # Remediation script
+    python3 run.py diff baseline.json current.json           # Security drift analysis
+    python3 run.py list                                      # List modules
 """
 
 import sys
@@ -298,6 +304,7 @@ def print_help() -> None:
     cmds = [
         ("xping", "Launch interactive menu console"),
         ("xping scan --all", "Full system security scan"),
+        ("xping scan --all -t <target_ip>", "Scan target host / IP address"),
         ("xping scan -m <modules>", "Scan specific modules (e.g. sysrecon,container)"),
         ("xping diff <base.json> <curr.json>", "Security drift analysis between two scans"),
         ("xping list", "List available modules & descriptions"),

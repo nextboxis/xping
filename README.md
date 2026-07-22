@@ -18,7 +18,7 @@
 
 XPing is a production-grade, modular security auditing and reconnaissance tool for Linux systems. Designed with **zero external dependencies** (using the Python 3.8+ standard library only), it runs seamlessly on bare-metal servers, containers, VM instances, or air-gapped secure environments.
 
-XPing performs read-only, non-destructive checks across 6 analysis domains. It features a **custom interactive CLI menu**, multi-threaded parallel execution, and structured reporting (Terminal, JSON, and self-contained HTML).
+XPing performs read-only, non-destructive checks across **7 analysis domains**. It features a **custom interactive CLI menu**, multi-threaded parallel execution, target host/IP configuration, security drift tracking (`xping diff`), and structured reporting (Terminal, JSON, self-contained HTML, and GitHub SARIF v2.1.0).
 
 ---
 
@@ -51,6 +51,7 @@ XPing performs read-only, non-destructive checks across 6 analysis domains. It f
 | **`loganalyzer`** | Forensic Log Auditing | Processes `/var/log/auth.log` or `/var/log/secure` to capture failed SSH logins, brute-force frequency (threshold-based IP tracking), successful logins, and switched sessions (`su`/`sudo`). Scans syslog and kernel logs for OOM (Out of Memory) kills, kernel panics, and process segmentation faults. Audits system log files for truncation or zero-byte resets (log tampering indicator). |
 | **`hardening`** | Hardening Checkups | Checks 13 kernel parameter files in `/proc/sys` (including ASLR state, `ptrace_scope`, TCP SYN cookies, ICMP redirects, source routing, and packet logging). Evaluates Mandatory Access Control state (SELinux `getenforce` modes or AppArmor loaded profiles). Checks `/etc/modprobe.d` configurations for USB storage blacklisting, audits `/tmp` and `/var/tmp` for `noexec`/`nosuid`/`nodev` mount flags, and checks automatic update services. |
 | **`redteam`** | Attack Path Validation | Analyzes active environment `PATH` configurations for writable directories or current-directory (`.`) inclusions. Evaluates user sudo configurations (`sudo -l`) for **35+ known privilege escalation vectors** (such as passwordless `tar`, `vim`, `find`, `docker`, or compiler tools). Detects unencrypted private SSH keys, AWS access keys, and plain-text passwords in configuration files. Scans shell history files for plain-text password usage. |
+| **`container`** | Container & Cloud Audit | Audits Docker daemon socket file permissions, unauthenticated Docker TCP API ports (2375/2376), container capability leaks (`CAP_SYS_ADMIN`, `CAP_NET_ADMIN`), accessible cloud metadata IMDS endpoints (AWS 169.254.169.254, GCP, Azure), exposed Kubernetes service account tokens, and container runtime environment boundaries. |
 
 ---
 
@@ -77,17 +78,26 @@ cd xping
 # Option A: Run a full security scan outputting to the Terminal
 sudo python3 run.py scan --all
 
-# Option B: Run specific modules only
-sudo python3 run.py scan --modules sysrecon,netaudit
+# Option B: Run scan for a specific target host or IP address
+sudo python3 run.py scan --all --target 192.168.1.50
 
-# Option C: Launch the Interactive Menu Console
+# Option C: Run specific modules only
+sudo python3 run.py scan --modules sysrecon,container
+
+# Option D: Security Drift Analysis between baseline and current scans
+python3 run.py diff baseline.json current.json
+
+# Option E: Launch the Interactive Menu Console
 python3 run.py
-#   [1] Full Security Scan      — Runs all 6 modules sequentially.
+#   [1] Full Security Scan      — Runs all 7 modules sequentially.
 #   [2] Selective Scan          — Displays module list; type numbers (e.g. 1,4) to run.
 #   [3] Quick Scan (High+)      — Runs full scan filtering out LOW/INFO findings.
 #   [4] List Modules            — Lists loaded modules with description text.
 #   [5] Generate HTML Report    — Runs full scan, prompts for output file path.
 #   [6] Generate JSON Report    — Runs full scan, exports data structure to file.
+#   [7] Security Drift Analysis — Compares baseline.json and current.json for drift.
+#   [8] Generate SARIF Report   — Exports GitHub Code Scanning SARIF v2.1.0 file.
+#   [9] Generate Remediation    — Creates automated bash fix script (remediation.sh).
 ```
 
 ### 2. One-Liner Download & Run
@@ -104,7 +114,7 @@ You can install XPing globally using `setuptools`:
 sudo pip install -e .
 
 # Run globally from anywhere on the system
-sudo xping scan --all
+sudo xping scan --all -t 192.168.1.100
 ```
 
 ---
@@ -116,18 +126,22 @@ XPing includes a custom-built argument parser (independent of the Python `argpar
 ```text
 xping scan [options]
   --all,     -a            Run all available modules
-  --modules, -m LIST       Comma-separated list of modules (e.g. sysrecon,netaudit)
-  --format, -f FORMAT      Output format: terminal | json | html (default: terminal)
-  --output,  -o PATH       Output file destination (required for json/html)
+  --modules, -m LIST       Comma-separated list of modules (e.g. sysrecon,container)
+  --target,  -t TARGET     Target host or IP address (default: auto-detected local IP)
+  --format,  -f FORMAT     Output format: terminal | json | html | sarif (default: terminal)
+  --output,  -o PATH       Output file destination (required for json/html/sarif)
   --severity,-s LEVEL      Minimum finding severity: info | low | medium | high | critical
+  --generate-fix PATH      Export automated remediation bash script based on findings
+  --custom-modules-dir DIR Directory path containing custom plugin modules
   --workers, -w N          Maximum parallel execution threads (default: 4)
   --log-file PATH          Write runtime diagnostics to a JSON log file
   --verbose, -v            Show trace debug logs
   --no-color               Disable all ANSI escape sequences for logging/output
 
-xping list                 List available modules and their descriptions
-xping --version, -V        Display the current version
-xping --help, -h           Show the help menu
+xping diff <base.json> <curr.json>  Security drift analysis between two scan files
+xping list                          List available modules and their descriptions
+xping --version, -V                 Display the current version
+xping --help, -h                    Show the help menu
 ```
 
 ---
@@ -148,20 +162,34 @@ Use exit codes in CI/CD pipelines to gate deployments based on security posture.
 ## 📋 Reporting Formats
 
 ### 1. Interactive Terminal
-Features high-contrast severity badges (`⬤ CRITICAL`, `● HIGH`, `◉ MEDIUM`, `○ LOW`), file path deep-links, clear evidence outputs, and step-by-step remediation advice.
+Features high-contrast severity badges (`⬤ CRITICAL`, `● HIGH`, `◉ MEDIUM`, `○ LOW`), Target IP metadata, file path deep-links, clear evidence outputs, and step-by-step remediation advice.
 
 ### 2. Structured JSON
-Output structured results containing full metrics, target hostname, execution timing, findings list, and associated metadata. Perfect for SIEM integration or automation pipelines.
+Output structured results containing full metrics, target host/IP, execution timing, findings list, and associated metadata. Perfect for SIEM integration or automation pipelines.
 
 ```bash
 sudo xping scan --all -f json -o scan_results.json
 ```
 
 ### 3. Responsive HTML
-Generates a self-contained, responsive, dark-themed HTML dashboard containing visual stat cards, collapsible module sections, and structured code blocks. Requires no external CSS/JS file requests or assets.
+Generates a self-contained, responsive, dark-themed HTML dashboard containing visual stat cards, target IP header, collapsible module sections, and structured code blocks. Requires no external CSS/JS file requests or assets.
 
 ```bash
 sudo xping scan --all -f html -o security_report.html
+```
+
+### 4. GitHub Code Scanning SARIF (v2.1.0)
+Generates OASIS SARIF v2.1.0 standard JSON formatted for native integration with GitHub Code Scanning & Security Tab.
+
+```bash
+sudo xping scan --all -f sarif -o security_results.sarif
+```
+
+### 5. Automated Remediation Bash Script (`--generate-fix`)
+Generates an executable bash fix script (`remediation.sh`) with strict safety checks (`set -euo pipefail`) tailored to system findings.
+
+```bash
+sudo xping scan --all --generate-fix remediation.sh
 ```
 
 ---
@@ -175,7 +203,7 @@ xping/
 ├── core/
 │   ├── engine.py          # Parallel thread pool execution engine
 │   ├── models.py          # Finding, Severity, ScanResult dataclasses
-│   ├── reporter.py        # Terminal formatting and HTML/JSON report builders
+│   ├── reporter.py        # Terminal, HTML, JSON, and SARIF report builders + remediation generator
 │   └── logger.py          # Structured logging (standard error & JSON logging)
 ├── modules/
 │   ├── base.py            # Abstract Base Module class
@@ -184,7 +212,8 @@ xping/
 │   ├── secaudit.py        # PAM, SSH configuration, SUID, capability audit
 │   ├── loganalyzer.py     # Forensics audit, auth.log, crash trace check
 │   ├── hardening.py       # Kernel sysctl, MAC policies, services verification
-│   └── redteam.py         # Privesc, Docker container, keys detection
+│   ├── redteam.py         # Privesc, Docker container, keys detection
+│   └── container.py       # Docker socket, capability leaks, cloud IMDS check
 └── utils/
     └── helpers.py         # Safe command runner, fallback encoding parser
 ```
@@ -215,27 +244,33 @@ jobs:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Execute XPing System Scan
+      - name: Execute XPing System Scan & SARIF Export
         run: |
           # Install command globally
           sudo pip install .
           
-          # Run full scan, exiting with non-zero on CRITICAL findings
-          sudo xping scan --all --severity high --format html --output report.html
+          # Run full scan, export HTML report and SARIF for GitHub Code Scanning
+          sudo xping scan --all --format sarif --output security_results.sarif --generate-fix remediation.sh
 
-      - name: Upload Security Report Artifact
+      - name: Upload SARIF to GitHub Security Tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security_results.sarif
+
+      - name: Upload Remediation Script Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xping-security-report
-          path: report.html
+          name: xping-remediation-script
+          path: remediation.sh
 ```
 
 ---
 
 ## 🔌 Adding Custom Modules
 
-Adding checks to XPing requires zero system registration. Create a Python file inside `xping/modules/` inheriting from the base class:
+Adding checks to XPing requires zero system registration. Create a Python file inside `xping/modules/` or load plugins dynamically from an external directory (`--custom-modules-dir /etc/xping/plugins`):
 
 ```python
 from xping.modules.base import BaseModule
@@ -299,6 +334,10 @@ To run safely in sensitive, high-availability production environments, XPing imp
 | Multi-threaded execution | ✅ | ❌ | ❌ | ❌ |
 | HTML report output | ✅ | ✅ | ❌ | ❌ |
 | JSON structured output | ✅ | ✅ | ❌ | ❌ |
+| SARIF v2.1.0 (GitHub Code Scanning) | ✅ | ❌ | ❌ | ❌ |
+| Security Drift Comparison (`xping diff`) | ✅ | ❌ | ❌ | ❌ |
+| Automated Remediation Script Generation | ✅ | ❌ | ❌ | ❌ |
+| Container & Cloud IMDS Audit | ✅ | ❌ | ✅ | ❌ |
 | Interactive CLI menu | ✅ | ❌ | ❌ | ❌ |
 | Red team privesc checks | ✅ | ❌ | ✅ | ✅ |
 | GTFOBins SUID matching | ✅ | ❌ | ✅ | ❌ |
