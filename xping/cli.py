@@ -177,6 +177,9 @@ class ParsedArgs:
         self.version: bool = False
         self.help: bool = False
         self.interactive: bool = False
+        self.generate_fix: Optional[str] = None
+        self.custom_modules_dir: Optional[str] = None
+        self.diff_files: List[str] = []
 
 
 def parse_args(argv: List[str]) -> ParsedArgs:
@@ -184,23 +187,25 @@ def parse_args(argv: List[str]) -> ParsedArgs:
     Custom argument parser — no argparse dependency.
 
     Supports both long (--flag) and short (-f) forms.
-    Handles positional commands (scan, list) and key=value style.
+    Handles positional commands (scan, list, diff) and key=value style.
     """
     args = ParsedArgs()
 
     # Flag definitions: (long, short, attr_name, expects_value, type)
     flags = [
-        ("--all",       "-a",  "all",       False, bool),
-        ("--modules",   "-m",  "modules",   True,  str),
-        ("--format",    "-f",  "format",    True,  str),
-        ("--output",    "-o",  "output",    True,  str),
-        ("--severity",  "-s",  "severity",  True,  str),
-        ("--workers",   "-w",  "workers",   True,  int),
-        ("--log-file",  None,  "log_file",  True,  str),
-        ("--verbose",   "-v",  "verbose",   False, bool),
-        ("--no-color",  None,  "no_color",  False, bool),
-        ("--version",   "-V",  "version",   False, bool),
-        ("--help",      "-h",  "help",      False, bool),
+        ("--all",                "-a",  "all",                False, bool),
+        ("--modules",            "-m",  "modules",            True,  str),
+        ("--format",             "-f",  "format",             True,  str),
+        ("--output",             "-o",  "output",             True,  str),
+        ("--severity",           "-s",  "severity",           True,  str),
+        ("--workers",            "-w",  "workers",            True,  int),
+        ("--log-file",           None,  "log_file",           True,  str),
+        ("--verbose",            "-v",  "verbose",            False, bool),
+        ("--no-color",           None,  "no_color",           False, bool),
+        ("--version",            "-V",  "version",            False, bool),
+        ("--help",               "-h",  "help",               False, bool),
+        ("--generate-fix",       None,  "generate_fix",       True,  str),
+        ("--custom-modules-dir", None,  "custom_modules_dir", True,  str),
     ]
 
     # Build lookup tables
@@ -232,13 +237,20 @@ def parse_args(argv: List[str]) -> ParsedArgs:
             else:
                 setattr(args, attr, True)
 
-        elif token in ("scan", "list"):
+        elif token in ("scan", "list", "diff"):
             args.command = token
+            if token == "diff":
+                # Remaining positional tokens are baseline and current JSON file paths
+                i += 1
+                while i < len(argv) and not argv[i].startswith("-"):
+                    args.diff_files.append(argv[i])
+                    i += 1
+                continue
 
         elif not token.startswith("-"):
             # Unknown positional — treat as command
             Term.writeln(Term.c(f"  Unknown command: '{token}'", Term.RED))
-            Term.writeln(f"  Available commands: scan, list")
+            Term.writeln(f"  Available commands: scan, list, diff")
             sys.exit(1)
 
         else:
@@ -249,7 +261,7 @@ def parse_args(argv: List[str]) -> ParsedArgs:
         i += 1
 
     # Validate format
-    valid_formats = ("terminal", "json", "html")
+    valid_formats = ("terminal", "json", "html", "sarif")
     if args.format not in valid_formats:
         Term.writeln(Term.c(f"  Error: --format must be one of: {', '.join(valid_formats)}", Term.RED))
         sys.exit(1)
@@ -275,51 +287,79 @@ def print_help() -> None:
 
     # Header box
     Term.writeln(f"  {Term.c(Term.TL + Term.H * w + Term.TR, Term.CYAN)}")
-    Term.writeln(f"  {Term.c(Term.V, Term.CYAN)}  {Term.c('USAGE', Term.BOLD + Term.WHITE)}{'':59}{Term.c(Term.V, Term.CYAN)}")
+    Term.writeln(f"  {Term.c(Term.V, Term.CYAN)}  {Term.c('USAGE & COMMAND REFERENCE', Term.BOLD + Term.WHITE)}{'':38}{Term.c(Term.V, Term.CYAN)}")
     Term.writeln(f"  {Term.c(Term.BL + Term.H * w + Term.BR, Term.CYAN)}")
     Term.writeln()
 
     # Usage patterns
     cmds = [
-        ("xping", "Launch interactive mode"),
+        ("xping", "Launch interactive menu console"),
         ("xping scan --all", "Full system security scan"),
-        ("xping scan -m <modules>", "Scan specific modules"),
-        ("xping list", "List available modules"),
-        ("xping --help", "Show this help screen"),
-        ("xping --version", "Show version"),
+        ("xping scan -m <modules>", "Scan specific modules (e.g. sysrecon,container)"),
+        ("xping diff <base.json> <curr.json>", "Security drift analysis between two scans"),
+        ("xping list", "List available modules & descriptions"),
+        ("xping --help, -h", "Show this help screen"),
+        ("xping --version, -V", "Display XPing version"),
     ]
     for cmd, desc in cmds:
-        Term.writeln(f"    {Term.c(cmd.ljust(28), Term.GREEN)} {Term.c(desc, Term.DIM)}")
+        Term.writeln(f"    {Term.c(cmd.ljust(34), Term.GREEN)} {Term.c(desc, Term.DIM)}")
 
     # Scan options
     Term.writeln()
-    Term.writeln(f"  {Term.c('SCAN OPTIONS', Term.BOLD + Term.WHITE)}")
-    Term.writeln(f"  {Term.c('-' * 40, Term.DIM)}")
+    Term.writeln(f"  {Term.c('SCAN & AUDIT OPTIONS', Term.BOLD + Term.WHITE)}")
+    Term.writeln(f"  {Term.c('-' * 45, Term.DIM)}")
 
     opts = [
         ("--all,     -a", "Run all available modules"),
         ("--modules, -m", "Comma-separated module list"),
-        ("--format,  -f", "Output: terminal | json | html"),
-        ("--output,  -o", "Report output file path"),
-        ("--severity,-s", "Min severity: info|low|medium|high|critical"),
-        ("--workers, -w", "Parallel thread count (default: 4)"),
-        ("--log-file",    "JSON log file path"),
-        ("--verbose, -v", "Enable debug output"),
-        ("--no-color",    "Disable ANSI color codes"),
+        ("--format,  -f", "Output format: terminal | json | html | sarif"),
+        ("--output,  -o", "Report output file destination"),
+        ("--severity,-s", "Min severity: info | low | medium | high | critical"),
+        ("--generate-fix", "Export automated remediation bash script"),
+        ("--custom-modules-dir", "Directory path containing custom plugin modules"),
+        ("--workers, -w", "Parallel thread pool count (default: 4)"),
+        ("--log-file",    "Write runtime diagnostics to JSON log file"),
+        ("--verbose, -v", "Enable debug trace logging"),
+        ("--no-color",    "Disable ANSI escape colors"),
     ]
     for flag, desc in opts:
-        Term.writeln(f"    {Term.c(flag.ljust(16), Term.YELLOW)} {desc}")
+        Term.writeln(f"    {Term.c(flag.ljust(20), Term.YELLOW)} {desc}")
+
+    # Section 1: Security Drift Analysis
+    Term.writeln()
+    Term.writeln(f"  {Term.c('SECTION: SECURITY DRIFT ANALYSIS (xping diff)', Term.BOLD + Term.CYAN)}")
+    Term.writeln(f"  {Term.c('-' * 55, Term.DIM)}")
+    Term.writeln(f"    {Term.c('Compare two JSON scan results to track added, resolved, and persistent risks:', Term.DIM)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('xping scan --all -f json -o baseline.json', Term.WHITE)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('xping scan --all -f json -o current.json', Term.WHITE)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('xping diff baseline.json current.json', Term.GREEN + Term.BOLD)}")
+
+    # Section 2: Automated Remediation & CI/CD Exports
+    Term.writeln()
+    Term.writeln(f"  {Term.c('SECTION: AUTOMATED REMEDIATION & CI/CD EXPORTS', Term.BOLD + Term.CYAN)}")
+    Term.writeln(f"  {Term.c('-' * 55, Term.DIM)}")
+    Term.writeln(f"    {Term.c('Generate executable fix scripts or export SARIF for GitHub Security Tab:', Term.DIM)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('sudo xping scan --all --generate-fix fix.sh', Term.WHITE)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('sudo xping scan --all -f sarif -o security_results.sarif', Term.WHITE)}")
+
+    # Section 3: Custom Plugin Modules
+    Term.writeln()
+    Term.writeln(f"  {Term.c('SECTION: CUSTOM PLUGIN MODULES', Term.BOLD + Term.CYAN)}")
+    Term.writeln(f"  {Term.c('-' * 55, Term.DIM)}")
+    Term.writeln(f"    {Term.c('Dynamically load custom organizational checks from an external directory:', Term.DIM)}")
+    Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c('sudo xping scan --all --custom-modules-dir /etc/xping/plugins/', Term.WHITE)}")
 
     # Examples
     Term.writeln()
-    Term.writeln(f"  {Term.c('EXAMPLES', Term.BOLD + Term.WHITE)}")
-    Term.writeln(f"  {Term.c('-' * 40, Term.DIM)}")
+    Term.writeln(f"  {Term.c('QUICK EXAMPLES', Term.BOLD + Term.WHITE)}")
+    Term.writeln(f"  {Term.c('-' * 45, Term.DIM)}")
 
     examples = [
         "sudo python3 run.py scan --all",
-        "python3 run.py scan -m sysrecon,netaudit -s high",
+        "python3 run.py scan -m sysrecon,container -s high",
         "sudo python3 run.py scan --all -f html -o report.html",
-        "sudo python3 run.py scan --all -f json -o scan.json",
+        "sudo python3 run.py scan --all -f sarif -o security.sarif --generate-fix fix.sh",
+        "python3 run.py diff baseline.json current.json",
     ]
     for ex in examples:
         Term.writeln(f"    {Term.c('$', Term.DIM)} {Term.c(ex, Term.CYAN)}")
@@ -396,13 +436,17 @@ def interactive_mode() -> int:
     Term.writeln()
 
     menu_items = [
-        ("1", "Full Security Scan",       "Run all 6 modules"),
-        ("2", "Selective Module Scan",     "Choose specific modules"),
-        ("3", "Quick Scan (High+ Only)",   "Fast scan, critical findings only"),
-        ("4", "List Available Modules",    "Show module details"),
-        ("5", "Generate HTML Report",      "Full scan with HTML output"),
-        ("6", "Generate JSON Report",      "Full scan with JSON output"),
-        ("0", "Exit",                      ""),
+        ("1", "Full Security Scan",           "Run all modules"),
+        ("2", "Selective Module Scan",         "Choose specific modules"),
+        ("3", "Quick Scan (High+ Only)",       "Fast scan, critical findings only"),
+        ("4", "List Available Modules",        "Show module details"),
+        ("5", "Generate HTML Report",          "Full scan with HTML output"),
+        ("6", "Generate JSON Report",          "Full scan with JSON output"),
+        ("7", "Security Drift Analysis",       "Compare baseline & current scan files"),
+        ("8", "Generate SARIF Report",          "Export GitHub Code Scanning report"),
+        ("9", "Generate Remediation Script",   "Create automated bash fix script"),
+        ("H", "Help & Reference",              "Display command documentation"),
+        ("0", "Exit",                          ""),
     ]
 
     for key, title, desc in menu_items:
@@ -414,13 +458,17 @@ def interactive_mode() -> int:
     Term.writeln()
 
     try:
-        choice = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Select option: ").strip()
+        choice = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Select option (or type 'help'): ").strip().lower()
     except (KeyboardInterrupt, EOFError):
         Term.writeln(f"\n  {Term.c('Goodbye!', Term.DIM)}")
         return 0
 
-    if choice == "0":
+    if choice in ("0", "exit", "quit"):
         Term.writeln(f"\n  {Term.c('Goodbye!', Term.DIM)}")
+        return 0
+
+    elif choice in ("h", "help", "?"):
+        print_help()
         return 0
 
     elif choice == "1":
@@ -447,8 +495,21 @@ def interactive_mode() -> int:
             output = "xping_report.json"
         return run_scan(all_modules=True, severity="info", fmt="json", output=output)
 
+    elif choice == "7":
+        f1 = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Baseline JSON path [baseline.json]: ").strip() or "baseline.json"
+        f2 = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Current JSON path [current.json]: ").strip() or "current.json"
+        return cmd_diff([f1, f2])
+
+    elif choice == "8":
+        output = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Output path [xping_report.sarif]: ").strip() or "xping_report.sarif"
+        return run_scan(all_modules=True, severity="info", fmt="sarif", output=output)
+
+    elif choice == "9":
+        output = input(f"  {Term.c('>', Term.GREEN + Term.BOLD)} Fix script path [remediation.sh]: ").strip() or "remediation.sh"
+        return run_scan(all_modules=True, severity="info", fmt="terminal", generate_fix=output)
+
     else:
-        Term.writeln(Term.c(f"\n  Invalid option: '{choice}'", Term.RED))
+        Term.writeln(Term.c(f"\n  Invalid option: '{choice}'. Type 'help' for usage guidance.", Term.RED))
         return 1
 
 
@@ -518,6 +579,8 @@ def run_scan(
     output: Optional[str] = None,
     workers: int = 4,
     verbose: bool = False,
+    generate_fix: Optional[str] = None,
+    custom_modules_dir: Optional[str] = None,
 ) -> int:
     """
     Execute a scan with animated progress display.
@@ -542,6 +605,8 @@ def run_scan(
     Term.writeln(f"  {Term.c('Format:', Term.DIM)}   {Term.c(fmt, Term.WHITE)}")
     if output:
         Term.writeln(f"  {Term.c('Output:', Term.DIM)}   {Term.c(output, Term.WHITE)}")
+    if generate_fix:
+        Term.writeln(f"  {Term.c('Fix Script:', Term.DIM)} {Term.c(generate_fix, Term.WHITE)}")
     Term.writeln()
 
     # Start progress spinner
@@ -554,6 +619,7 @@ def run_scan(
             modules=None if all_modules else modules,
             max_workers=workers,
             severity_threshold=sev_threshold,
+            custom_modules_dir=custom_modules_dir,
         )
 
         progress.update("Running security analysis...")
@@ -583,6 +649,11 @@ def run_scan(
             Term.writeln(f"  {Term.c(Term.V, Term.GREEN)} Report saved: {Term.c(output_path, Term.WHITE + Term.BOLD)}")
             Term.writeln(f"  {Term.c(Term.BL + Term.H * 50 + Term.BR, Term.GREEN)}")
             Term.writeln()
+
+    if generate_fix:
+        fix_path = reporter.generate_remediation_script(generate_fix)
+        Term.writeln(f"  {Term.c('[FIX]', Term.GREEN + Term.BOLD)} Automated remediation script saved to: {fix_path}")
+        Term.writeln()
 
     # Return non-zero if critical findings
     if scan_result.overall_risk == "CRITICAL":
@@ -615,6 +686,7 @@ def cmd_list() -> int:
         "loganalyzer": "LOG",
         "hardening":   "HRD",
         "redteam":     "RED",
+        "container":   "CTR",
     }
 
     for mod in available:
@@ -629,6 +701,64 @@ def cmd_list() -> int:
     Term.writeln(f"  {Term.c('Usage:', Term.DIM)} xping scan -m {','.join(m['name'] for m in available[:2])}")
     Term.writeln()
     return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Security Drift Command
+# ═══════════════════════════════════════════════════════════════════════
+
+def cmd_diff(diff_files: List[str]) -> int:
+    """Compare baseline scan JSON and current scan JSON for drift analysis."""
+    import json
+    from xping.core.reporter import Reporter
+
+    if len(diff_files) < 2:
+        Term.writeln(Term.c("  Error: xping diff requires 2 JSON files: baseline.json current.json", Term.RED))
+        return 1
+
+    file1, file2 = diff_files[0], diff_files[1]
+    if not os.path.exists(file1) or not os.path.exists(file2):
+        Term.writeln(Term.c("  Error: Specified JSON report file does not exist.", Term.RED))
+        return 1
+
+    try:
+        with open(file1, "r", encoding="utf-8") as f:
+            base_json = json.load(f)
+        with open(file2, "r", encoding="utf-8") as f:
+            curr_json = json.load(f)
+
+        res = Reporter.compare_scans(base_json, curr_json)
+
+        Term.writeln()
+        Term.writeln(f"  {Term.c(Term.TL + Term.H * 60 + Term.TR, Term.CYAN)}")
+        Term.writeln(f"  {Term.c(Term.V, Term.CYAN)}  {Term.c('SECURITY DRIFT ANALYSIS', Term.BOLD + Term.WHITE)}{'':35}{Term.c(Term.V, Term.CYAN)}")
+        Term.writeln(f"  {Term.c(Term.BL + Term.H * 60 + Term.BR, Term.CYAN)}")
+        Term.writeln()
+        Term.writeln(f"  {Term.c('Baseline Scan:', Term.DIM)} {res['baseline_id']}")
+        Term.writeln(f"  {Term.c('Current Scan:', Term.DIM)}  {res['current_id']}")
+        Term.writeln()
+        Term.writeln(f"  ▶ {Term.c('New / Added Findings:', Term.RED + Term.BOLD)}  {res['added_count']}")
+        Term.writeln(f"  ▶ {Term.c('Resolved Findings:', Term.GREEN + Term.BOLD)}    {res['resolved_count']}")
+        Term.writeln(f"  ▶ {Term.c('Persistent Findings:', Term.YELLOW)} {res['persistent_count']}")
+        Term.writeln()
+
+        if res["added_findings"]:
+            Term.writeln(f"  {Term.c('━━━ NEW FINDINGS (REQUIRES REVIEW) ━━━', Term.RED + Term.BOLD)}")
+            for f in res["added_findings"]:
+                Term.writeln(f"  + [{f.get('severity', 'INFO')}] [{f.get('module', 'UNKNOWN')}] {f.get('title', '')}")
+            Term.writeln()
+
+        if res["resolved_findings"]:
+            Term.writeln(f"  {Term.c('━━━ RESOLVED FINDINGS ━━━', Term.GREEN + Term.BOLD)}")
+            for f in res["resolved_findings"]:
+                Term.writeln(f"  - [{f.get('severity', 'INFO')}] [{f.get('module', 'UNKNOWN')}] {f.get('title', '')}")
+            Term.writeln()
+
+        return 0 if res["added_count"] == 0 else 2
+
+    except Exception as e:
+        Term.writeln(Term.c(f"  Failed to parse or compare JSON scan files: {e}", Term.RED))
+        return 1
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -704,6 +834,10 @@ def main() -> int:
             print_banner()
             return cmd_list()
 
+        elif args.command == "diff":
+            print_banner()
+            return cmd_diff(args.diff_files)
+
         elif args.command == "scan":
             print_banner()
 
@@ -727,6 +861,8 @@ def main() -> int:
                 output=args.output,
                 workers=args.workers,
                 verbose=args.verbose,
+                generate_fix=args.generate_fix,
+                custom_modules_dir=args.custom_modules_dir,
             )
 
         else:

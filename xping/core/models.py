@@ -58,6 +58,8 @@ class Finding:
     evidence: str = ""
     remediation: str = ""
     cve_refs: List[str] = field(default_factory=list)
+    cis_tag: str = ""
+    nist_tag: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:

@@ -440,9 +440,176 @@ class Reporter:
         elif fmt == "html":
             path = output_path or f"XPing_report_{self.result.scan_id}.html"
             return self.write_html(path)
+        elif fmt == "sarif":
+            path = output_path or f"XPing_report_{self.result.scan_id}.sarif"
+            return self.write_sarif(path)
         else:
             log.error(f"Unknown report format: {fmt}")
             return None
+
+    # ── SARIF Export (GitHub Code Scanning) ────────────────────────────────
+
+    def write_sarif(self, output_path: str) -> str:
+        """Write findings in SARIF v2.1.0 JSON format for GitHub Security integration."""
+        r = self.result
+        rules = []
+        sarif_results = []
+        rule_ids = set()
+
+        sev_mapping = {
+            "CRITICAL": "error",
+            "HIGH": "error",
+            "MEDIUM": "warning",
+            "LOW": "note",
+            "INFO": "note",
+        }
+
+        for mr in r.module_results:
+            for f in mr.findings:
+                rule_id = f"XPING-{f.module.upper()}-{hash(f.title) % 10000:04d}"
+                if rule_id not in rule_ids:
+                    rule_ids.add(rule_id)
+                    rules.append({
+                        "id": rule_id,
+                        "name": f.title.replace(" ", ""),
+                        "shortDescription": {"text": f.title},
+                        "fullDescription": {"text": f.description},
+                        "help": {"text": f.remediation or "Review configuration and system state."},
+                        "properties": {
+                            "tags": ["security", f.module, f.severity.name.lower()] + ([f.cis_tag] if f.cis_tag else []) + ([f.nist_tag] if f.nist_tag else [])
+                        }
+                    })
+
+                sarif_results.append({
+                    "ruleId": rule_id,
+                    "level": sev_mapping.get(f.severity.name, "note"),
+                    "message": {
+                        "text": f"{f.title}: {f.description}" + (f"\nEvidence: {f.evidence}" if f.evidence else "")
+                    },
+                    "locations": [{
+                        "physicalLocation": {
+                            "artifactLocation": {
+                                "uri": f.metadata.get("path", "/etc/system")
+                            }
+                        }
+                    }]
+                })
+
+        sarif_data = {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "XPing Security Auditor",
+                        "version": __version__,
+                        "informationUri": "https://github.com/giridharan-dev/xping",
+                        "rules": rules,
+                    }
+                },
+                "results": sarif_results,
+            }]
+        }
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(sarif_data, f, indent=2, ensure_ascii=False)
+
+        log.info(f"SARIF report written to: {output_path}")
+        return output_path
+
+    # ── Automated Remediation Generator ────────────────────────────────────
+
+    def generate_remediation_script(self, output_path: str) -> str:
+        """Generate executable bash script (remediation.sh) based on scan findings."""
+        r = self.result
+        lines = [
+            "#!/usr/bin/env bash",
+            "# ==================================================================",
+            f"# XPing Automated Remediation Script (Scan ID: {r.scan_id})",
+            f"# Target Host: {r.hostname} | Generated: {r.timestamp}",
+            "# WARNING: Review all commands carefully before running in production!",
+            "# ==================================================================",
+            "",
+            "set -euo pipefail",
+            "",
+            'if [ "$EUID" -ne 0 ]; then',
+            '    echo "[-] Error: Remediation script must be executed as root (sudo)."',
+            "    exit 1",
+            "fi",
+            "",
+            'echo "[+] Applying XPing automated remediation rules..."',
+            "",
+        ]
+
+        count = 0
+        for mr in r.module_results:
+            for f in mr.findings:
+                if f.remediation and f.severity in (Severity.HIGH, Severity.CRITICAL, Severity.MEDIUM):
+                    count += 1
+                    lines.append(f"# [{mr.module_name.upper()}] [{f.severity.name}] {f.title}")
+                    lines.append(f"# Remediation note: {f.remediation}")
+                    
+                    # Extract shell command lines if remediation specifies commands
+                    for line in f.remediation.splitlines():
+                        cmd_line = line.strip()
+                        if cmd_line.startswith("chmod ") or cmd_line.startswith("chown ") or cmd_line.startswith("sysctl ") or cmd_line.startswith("sudo "):
+                            if cmd_line.startswith("sudo "):
+                                cmd_line = cmd_line[5:]
+                            lines.append(f"{cmd_line}")
+                    lines.append("")
+
+        if count == 0:
+            lines.append('# No High/Critical findings requiring automated shell remediation.')
+
+        lines.append('echo "[+] Remediation script execution complete."')
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+        log.info(f"Remediation script written to: {output_path}")
+        return output_path
+
+    # ── Security Drift Comparison ─────────────────────────────────────────
+
+    @staticmethod
+    def compare_scans(baseline: dict, current: dict) -> dict:
+        """
+        Compare baseline and current scan JSON data to identify security drift.
+
+        Returns dict containing:
+            added_findings:       Findings in current but not in baseline
+            resolved_findings:    Findings in baseline but fixed in current
+            persistent_findings:  Findings present in both scans
+        """
+        def _finding_key(f: dict) -> tuple:
+            return (f.get("module", ""), f.get("title", ""), f.get("severity", ""))
+
+        baseline_findings = {}
+        for mod in baseline.get("modules", []):
+            for f in mod.get("findings", []):
+                baseline_findings[_finding_key(f)] = f
+
+        current_findings = {}
+        for mod in current.get("modules", []):
+            for f in mod.get("findings", []):
+                current_findings[_finding_key(f)] = f
+
+        added = [f for key, f in current_findings.items() if key not in baseline_findings]
+        resolved = [f for key, f in baseline_findings.items() if key not in current_findings]
+        persistent = [f for key, f in current_findings.items() if key in baseline_findings]
+
+        return {
+            "baseline_id": baseline.get("scan_id", "unknown"),
+            "current_id": current.get("scan_id", "unknown"),
+            "added_count": len(added),
+            "resolved_count": len(resolved),
+            "persistent_count": len(persistent),
+            "added_findings": added,
+            "resolved_findings": resolved,
+            "persistent_findings": persistent,
+        }
 
 
 def esc(text: str) -> str:

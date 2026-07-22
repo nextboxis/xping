@@ -13,6 +13,7 @@ Design decisions:
 """
 
 import os
+import sys
 import time
 import uuid
 import platform
@@ -44,16 +45,19 @@ class ScanEngine:
         modules: Optional[List[str]] = None,
         max_workers: int = 4,
         severity_threshold: Severity = Severity.INFO,
+        custom_modules_dir: Optional[str] = None,
     ):
         """
         Args:
             modules:             List of module names to run. None = all.
             max_workers:         Thread pool size for parallel execution.
             severity_threshold:  Only include findings at or above this level.
+            custom_modules_dir:  Optional path to directory containing custom plugin modules.
         """
         self.requested_modules = modules
         self.max_workers = max_workers
         self.severity_threshold = severity_threshold
+        self.custom_modules_dir = custom_modules_dir
         # Map of module_name -> module_class, populated by _discover_modules()
         self._registry: Dict[str, Type[BaseModule]] = {}
         self._discover_modules()
@@ -89,6 +93,34 @@ class ScanEngine:
                         log.debug(f"Registered module: {instance.name}")
             except Exception as e:
                 log.error(f"Failed to load module '{module_name}': {e}")
+
+        # Discover modules from custom_modules_dir if provided
+        if self.custom_modules_dir and os.path.isdir(self.custom_modules_dir):
+            sys_path_added = False
+            if self.custom_modules_dir not in sys.path:
+                sys.path.insert(0, self.custom_modules_dir)
+                sys_path_added = True
+            try:
+                for fname in os.listdir(self.custom_modules_dir):
+                    if fname.endswith(".py") and not fname.startswith("__"):
+                        mod_name = fname[:-3]
+                        try:
+                            mod = importlib.import_module(mod_name)
+                            for attr_name in dir(mod):
+                                attr = getattr(mod, attr_name)
+                                if (
+                                    isinstance(attr, type)
+                                    and issubclass(attr, BaseModule)
+                                    and attr is not BaseModule
+                                ):
+                                    instance = attr()
+                                    self._registry[instance.name] = attr
+                                    log.info(f"Registered custom plugin module: {instance.name}")
+                        except Exception as e:
+                            log.error(f"Failed to load custom plugin '{mod_name}': {e}")
+            finally:
+                if sys_path_added and self.custom_modules_dir in sys.path:
+                    sys.path.remove(self.custom_modules_dir)
 
     def _get_modules_to_run(self) -> List[BaseModule]:
         """Resolve which modules to execute based on user selection."""
